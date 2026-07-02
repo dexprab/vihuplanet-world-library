@@ -1,0 +1,12 @@
+name: Normalize Assets
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'raw/**'
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Sprint A1 placeholder"
