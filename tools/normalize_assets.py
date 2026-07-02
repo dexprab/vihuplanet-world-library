@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Sprint A1 entry point: normalize every raw asset into production/."""
 
+from pathlib import Path
+
 from asset_pipeline.config import OUTPUT_DIR, RAW_DIR
 from asset_pipeline.normalizer import normalize_image
 from asset_pipeline.scanner import find_assets
@@ -10,19 +12,30 @@ from asset_pipeline.writer import write_asset
 def main() -> int:
     processed = 0
     succeeded = 0
+    skipped = 0
     failed = 0
+    claimed: dict[Path, Path] = {}
 
     for source_path in find_assets(RAW_DIR):
-        relative_path = source_path.relative_to(RAW_DIR)
+        relative_path = source_path.relative_to(RAW_DIR).with_suffix(".png")
         processed += 1
 
         print("Processing:")
         print(source_path)
         print()
 
+        if relative_path in claimed:
+            print("Skipped (duplicate production target):")
+            print(f"{source_path} -> {OUTPUT_DIR / relative_path}")
+            print(f"Already generated from: {claimed[relative_path]}")
+            print()
+            skipped += 1
+            continue
+
         try:
             image = normalize_image(source_path)
             destination = write_asset(image, relative_path, OUTPUT_DIR)
+            claimed[relative_path] = source_path
             print("Saved:")
             print(destination)
             print()
@@ -35,6 +48,8 @@ def main() -> int:
     print(f"Processed: {processed}")
     print()
     print(f"Succeeded: {succeeded}")
+    print()
+    print(f"Skipped: {skipped}")
     print()
     print(f"Failed: {failed}")
 
