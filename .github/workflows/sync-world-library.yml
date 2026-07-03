@@ -3,12 +3,17 @@ name: World Library Sync
 # Mirrors production/ (source of truth) into
 # dexprab/vihustudio's vihuplanet/world-library/ folder.
 #
-# Runs on every push to main, and also on completion of the Asset
-# Normalizer workflow. The second trigger exists because commits made
-# by that workflow's own GITHUB_TOKEN do not themselves fire the
-# `push` trigger below (GitHub suppresses recursive workflow runs
-# from the default token in the same repository), so without it a
-# normalizer-generated change to production/ would never sync.
+# Runs on every push to main. Commits made by the Asset Normalizer's
+# own GITHUB_TOKEN don't themselves fire that push trigger (GitHub
+# suppresses recursive workflow runs from the default token in the
+# same repository), so the normalizer explicitly dispatches this
+# workflow as its last step after committing production/ changes.
+#
+# The workflow_run trigger below is kept as a redundant fallback for
+# that same gap (it proved unreliable/slow on its own in practice,
+# which is why the explicit dispatch was added as the primary path).
+# A duplicate run from both firing is harmless: the sync is idempotent
+# and concurrency below serializes overlapping runs.
 
 on:
   push:

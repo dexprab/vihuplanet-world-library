@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,3 +48,9 @@ jobs:
       - name: Push changes
         if: steps.detect.outputs.changed == 'true'
         run: git push
+
+      - name: Trigger World Library Sync
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync-world-library.yml --ref main --repo ${{ github.repository }}
