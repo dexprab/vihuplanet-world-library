@@ -12,6 +12,32 @@ or updated in `production/` are added or updated in
 removed from `vihuplanet/world-library/`. Nothing outside that folder in
 VihuStudio is ever touched.
 
+## Manifests
+
+Directory listings return HTTP 404 on GitHub Pages and most static
+hosts, so the Hero Page can't discover artwork by requesting a folder
+URL and parsing the response. Instead, every collection directory
+(any directory that directly contains `.png` files — e.g. `skies/`,
+`story-homes/`, `nature/flowers/`) gets a `manifest.json` listing just
+those filenames:
+
+```json
+[
+  "twilight-sky.png",
+  "moonlit-sky.png",
+  "storybook-night.png"
+]
+```
+
+`tools/generate_manifests.py` regenerates every manifest from scratch
+on each sync, right after the mirror step — artists never edit
+manifests manually, and there's nothing to keep in sync by hand.
+`tools/validate_manifests.py` then confirms every manifest exactly
+matches its directory's PNGs (and that no PNG-free directory has a
+leftover manifest) before anything is committed. If a collection has
+no PNGs, it simply has no `manifest.json` — the Hero Page's provider
+falls back to placeholder artwork in that case.
+
 ## Required GitHub secret
 
 The workflow authenticates to VihuStudio with a Personal Access Token,
@@ -47,11 +73,13 @@ after a failed run.
 
 ## Failure behaviour
 
-- The job validates that `production/` and
-  `vihuplanet/world-library/` are byte-identical immediately after
-  mirroring, before committing anything. If that check fails, the job
-  fails and **nothing is committed or pushed** to VihuStudio — a failed
-  sync never leaves a partial or inconsistent result.
+- The job validates that `production/` and `vihuplanet/world-library/`
+  are byte-identical (ignoring generated `manifest.json` files), and
+  that every manifest exactly matches its directory's PNGs, immediately
+  after mirroring and before committing anything. If either check
+  fails, the job fails and **nothing is committed or pushed** to
+  VihuStudio — a failed sync never leaves a partial or inconsistent
+  result.
 - If `VIHUSTUDIO_SYNC_TOKEN` is missing, expired, or lacks push access,
   the checkout or push step fails and no changes reach VihuStudio.
 - Concurrent runs are serialized (`concurrency: world-library-sync`),

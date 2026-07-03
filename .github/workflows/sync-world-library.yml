@@ -70,6 +70,8 @@ jobs:
 
           rsync -a --delete world-library/production/ "$DEST/"
 
+          python3 world-library/tools/generate_manifests.py "$DEST"
+
           cd vihustudio
           git add vihuplanet/world-library
 
@@ -90,8 +92,9 @@ jobs:
       - name: Validate mirror
         run: |
           set -euo pipefail
-          diff -rq world-library/production vihustudio/vihuplanet/world-library
-          echo "Validation passed: production/ and vihuplanet/world-library/ are identical."
+          diff -rq --exclude=manifest.json world-library/production vihustudio/vihuplanet/world-library
+          python3 world-library/tools/validate_manifests.py vihustudio/vihuplanet/world-library
+          echo "Validation passed: assets are identical (excluding generated manifests), and every manifest matches its collection."
 
       - name: Commit and push to VihuStudio
         if: steps.sync.outputs.changed == 'true'
