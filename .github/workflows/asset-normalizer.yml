@@ -27,6 +27,9 @@ jobs:
       - name: Run normalizer
         run: python tools/normalize_assets.py
 
+      - name: Generate manifests
+        run: python tools/generate_manifests.py
+
       - name: Detect changes
         id: detect
         run: |
@@ -42,8 +45,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add production
-          git commit -m "Normalize assets"
+          git commit -m "Normalize assets and regenerate manifests"
 
       - name: Push changes
         if: steps.detect.outputs.changed == 'true'
         run: git push
+
+      - name: Sync assets and manifests to VihuStudio
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          SYNC_TOKEN: ${{ secrets.VIHUSTUDIO_SYNC_TOKEN }}
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "VIHUSTUDIO_SYNC_TOKEN secret is not set — skipping sync." >&2
+            exit 1
+          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --depth 1 "https://x-access-token:${SYNC_TOKEN}@github.com/dexprab/vihustudio.git" vihustudio-sync
+          mkdir -p vihustudio-sync/vihuplanet/world-library
+          rsync -a production/ vihustudio-sync/vihuplanet/world-library/
+          cd vihustudio-sync
+          if [ -n "$(git status --porcelain vihuplanet/world-library)" ]; then
+            git add vihuplanet/world-library
+            git commit -m "sync(world-library): update production assets and manifests"
+            git push
+          fi
