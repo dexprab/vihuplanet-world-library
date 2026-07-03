@@ -1,0 +1,114 @@
+name: World Library Sync
+
+# Mirrors production/ (source of truth) into
+# dexprab/vihustudio's vihuplanet/world-library/ folder.
+#
+# Runs on every push to main, and also on completion of the Asset
+# Normalizer workflow. The second trigger exists because commits made
+# by that workflow's own GITHUB_TOKEN do not themselves fire the
+# `push` trigger below (GitHub suppresses recursive workflow runs
+# from the default token in the same repository), so without it a
+# normalizer-generated change to production/ would never sync.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_run:
+    workflows: ["Asset Normalizer"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: world-library-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve source commit
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout World Library (source)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.sha }}
+          path: world-library
+
+      - name: Checkout VihuStudio (destination)
+        uses: actions/checkout@v4
+        with:
+          repository: dexprab/vihustudio
+          token: ${{ secrets.VIHUSTUDIO_SYNC_TOKEN }}
+          path: vihustudio
+
+      - name: Mirror production/ into vihuplanet/world-library/
+        id: sync
+        run: |
+          set -euo pipefail
+          DEST="vihustudio/vihuplanet/world-library"
+          mkdir -p "$DEST"
+
+          rsync -a --delete world-library/production/ "$DEST/"
+
+          cd vihustudio
+          git add vihuplanet/world-library
+
+          ADDED=$(git status --porcelain -- vihuplanet/world-library | grep -c '^A' || true)
+          UPDATED=$(git status --porcelain -- vihuplanet/world-library | grep -c '^M' || true)
+          REMOVED=$(git status --porcelain -- vihuplanet/world-library | grep -c '^D' || true)
+
+          echo "added=$ADDED" >> "$GITHUB_OUTPUT"
+          echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
+          echo "removed=$REMOVED" >> "$GITHUB_OUTPUT"
+
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate mirror
+        run: |
+          set -euo pipefail
+          diff -rq world-library/production vihustudio/vihuplanet/world-library
+          echo "Validation passed: production/ and vihuplanet/world-library/ are identical."
+
+      - name: Commit and push to VihuStudio
+        if: steps.sync.outputs.changed == 'true'
+        working-directory: vihustudio
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci(world-library): automatically sync production assets to VihuStudio"
+          git push
+
+      - name: Sync summary
+        if: always()
+        run: |
+          {
+            echo "## World Library Sync Summary"
+            echo
+            if [ "${{ steps.sync.outputs.changed }}" = "true" ]; then
+              echo "- Added: ${{ steps.sync.outputs.added }}"
+              echo "- Updated: ${{ steps.sync.outputs.updated }}"
+              echo "- Removed: ${{ steps.sync.outputs.removed }}"
+            else
+              echo "No changes detected. vihuplanet/world-library/ already matches production/."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
