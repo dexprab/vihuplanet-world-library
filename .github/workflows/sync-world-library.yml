@@ -104,7 +104,9 @@ jobs:
           {
             echo "## World Library Sync Summary"
             echo
-            if [ "${{ steps.sync.outputs.changed }}" = "true" ]; then
+            if [ "${{ steps.sync.outcome }}" != "success" ]; then
+              echo "Sync did not complete: an earlier step failed or was skipped. See the job log for details."
+            elif [ "${{ steps.sync.outputs.changed }}" = "true" ]; then
               echo "- Added: ${{ steps.sync.outputs.added }}"
               echo "- Updated: ${{ steps.sync.outputs.updated }}"
               echo "- Removed: ${{ steps.sync.outputs.removed }}"
