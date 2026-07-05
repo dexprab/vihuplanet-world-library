@@ -38,6 +38,14 @@ leftover manifest) before anything is committed. If a collection has
 no PNGs, it simply has no `manifest.json` — the Hero Page's provider
 falls back to placeholder artwork in that case.
 
+A collection may also carry an optional `display.json` sidecar
+declaring display-framing metadata (which part of the image matters
+when it's cropped into a differently-shaped box) for specific files.
+When present, `generate_manifests.py` merges it into that file's
+manifest entry; every collection without one is completely unaffected.
+See [`docs/DISPLAY_METADATA.md`](DISPLAY_METADATA.md) for the full
+schema.
+
 ## Required GitHub secret
 
 The workflow authenticates to VihuStudio with a Personal Access Token,

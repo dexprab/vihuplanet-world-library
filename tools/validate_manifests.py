@@ -2,11 +2,51 @@
 """Validates that every manifest.json under a World Library tree exactly
 lists the .png files actually present in its directory, and that every
 directory containing .png files has a manifest.json.
+
+An entry is either a plain filename string (the original, still-default
+format) or a `{"id", "file", "display"}` object declaring display
+framing metadata for that file (see docs/DISPLAY_METADATA.md). Both
+shapes are validated the same way — this script only checks that the
+manifest's set of files matches the directory's set of PNGs, plus a
+light shape check on any `display` block found.
 """
 
 import json
 import sys
 from pathlib import Path
+
+VALID_ANCHORS = {"top", "center", "bottom"}
+
+
+def _entry_filename(entry, manifest_path: Path) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict) and isinstance(entry.get("file"), str):
+        return entry["file"]
+    raise ValueError(f"malformed manifest entry in {manifest_path}: {entry!r}")
+
+
+def _validate_display_shape(entry: dict, manifest_path: Path) -> list[str]:
+    errors = []
+    if entry.get("id") != Path(entry.get("file", "")).stem:
+        errors.append(f"{manifest_path}: entry 'id' does not match file stem ({entry!r})")
+
+    display = entry.get("display")
+    if not isinstance(display, dict):
+        errors.append(f"{manifest_path}: entry has no 'display' object ({entry!r})")
+        return errors
+
+    anchor = display.get("anchor")
+    if anchor is not None and anchor not in VALID_ANCHORS:
+        errors.append(
+            f"{manifest_path}: display.anchor {anchor!r} not one of {sorted(VALID_ANCHORS)}"
+        )
+
+    focus_y = display.get("focusY")
+    if focus_y is not None and not (isinstance(focus_y, (int, float)) and 0 <= focus_y <= 1):
+        errors.append(f"{manifest_path}: display.focusY {focus_y!r} is not a number in [0, 1]")
+
+    return errors
 
 
 def validate_manifests(root: Path) -> list[str]:
@@ -27,11 +67,21 @@ def validate_manifests(root: Path) -> list[str]:
             errors.append(f"manifest present with no PNGs: {manifest_path}")
         elif pngs and manifest_path.exists():
             listed = json.loads(manifest_path.read_text())
-            if sorted(listed) != pngs:
+            try:
+                listed_filenames = sorted(_entry_filename(e, manifest_path) for e in listed)
+            except ValueError as error:
+                errors.append(str(error))
+                continue
+
+            if listed_filenames != pngs:
                 errors.append(
                     f"manifest mismatch: {manifest_path} "
-                    f"(listed {sorted(listed)}, actual {pngs})"
+                    f"(listed {listed_filenames}, actual {pngs})"
                 )
+
+            for entry in listed:
+                if isinstance(entry, dict):
+                    errors.extend(_validate_display_shape(entry, manifest_path))
 
     return errors
 
